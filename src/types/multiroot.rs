@@ -139,7 +139,7 @@ ffi_wrapper!(
     *mut sys::gsl_multiroot_fsolver,
     gsl_multiroot_fsolver_free
     ;inner_call: sys::gsl_multiroot_function_struct => sys::gsl_multiroot_function_struct{ f: None, n: 0, params: std::ptr::null_mut() };
-    ;inner_closure: Option<Box<dyn Fn(&::VectorF64, &mut ::VectorF64) -> ::Value + 'a>> => None;,
+    ;inner_closure: Option<Box<dyn Fn(&::VectorF64, &mut ::VectorF64, *mut c_void) -> ::Value + 'a>> => None;,
     "This is a workspace for multidimensional root-finding without derivatives."
 );
 
@@ -163,26 +163,30 @@ impl<'a> MultiRootFSolver<'a> {
     /// This function initializes, or reinitializes, an existing solver `s` to use the multi
     /// function `f` with `n` unknowns.
     #[doc(alias = "gsl_multiroot_fsolver_set")]
-    pub fn set<F: Fn(&::VectorF64, &mut ::VectorF64) -> ::Value + 'a>(
+    pub fn set<F: Fn(&::VectorF64, &mut ::VectorF64, *mut c_void) -> ::Value + 'a>(
         &mut self,
         f: F,
         n: usize,
         x: &::VectorF64,
+        pp: *mut c_void,
     ) -> ::Value {
-        unsafe extern "C" fn inner_f<A: Fn(&::VectorF64, &mut ::VectorF64) -> ::Value>(
+        unsafe extern "C" fn inner_f<
+            A: Fn(&::VectorF64, &mut ::VectorF64, *mut c_void) -> ::Value,
+        >(
             x: *const sys::gsl_vector,
             params: *mut c_void,
             f: *mut sys::gsl_vector,
         ) -> c_int {
             let g: &A = &*(params as *const A);
             let x_new = ::VectorF64::soft_wrap(x as *const _ as *mut _);
-            ::Value::into(g(&x_new, &mut ::VectorF64::soft_wrap(f)))
+            ::Value::into(g(&x_new, &mut ::VectorF64::soft_wrap(f), params))
         }
 
         self.inner_call = sys::gsl_multiroot_function_struct {
             f: Some(inner_f::<F>),
             n,
-            params: &f as *const _ as *mut _,
+            // params: &f as *const _ as *mut _,
+            params: pp,
         };
         self.inner_closure = Some(Box::new(f));
 
